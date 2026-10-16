@@ -1,0 +1,31 @@
+# 中文版维护记录
+
+长期分支：`zh-cn`。原项目远程：`upstream`。当前上游基线和官方发行文件校验值见 `zh-upstream.json`。
+
+2026-10-16：保存并标记 `v2.0.3-zh-fix2`（2498b44）；将上游 `v2.0.4-base` 合入维护分支。保留已有中文字体、官方译名、盲注与商店按键提示、上屏和下屏布局修正。接入 2.0.4 的失败页面 A 键、Boss 信息位置和牌组查看时的提示遮挡修复，以及卡面即时应用逻辑。新增语言实际是丹麦语，修正上游 English/简中名称，并把新增汉字加入字体子集。
+
+仓库尚未推送到 GitHub。此前的自动监控和 GitHub 通知订阅没有设置成功；此维护流程不会自行创建后台任务，也不代表自动发布已开启。
+
+## 后续同步
+
+先运行 `python dev/check_upstream.py` 检查稳定发行版。若有新版，按 `AGENTS.md` 中的流程合并。`git fetch upstream --tags --prune` 只更新本地远程记录，不改工作代码；`git merge --no-ff <发行标签>` 接入新版，避免覆盖我们的提交。确认整合完成后更新版本记录并打标签。
+
+## 本机检查和构建
+
+项目已有 Python 环境位于 `D:/prj/Balatro3DS/work/venv/Scripts/python.exe`。以下命令从本仓库执行：
+
+```text
+python dev/test_zh.py
+python dev/audit_zh_translation.py
+python dev/verify_zh_font.py
+python dev/build_zh_font.py
+python dev/prepare_zh_release.py
+python dev/repack_zh_release.py
+python dev/validate_zh_release.py
+```
+
+字体需要在变更文字后用 dev/build.sh，或用 mkbcfnt 和 dev/bake_cjk_font.py 重建 13/17/21/27/33 五个原生高度。prepare 从 manifest 所列官方 URL 获取 CIA，校验 SHA-256 后提取官方运行时。repack 和 validate 共用相同 manifest，输出按版本归档到项目 outputs，保留旧安装包。
+
+打包脚本使用本机项目 work 中已有的 CTR 工具和开发依赖；完整源码构建也可按上游 dev/setup.sh、dev/build.sh 执行。真机验证仍需另外记录，桌面预览不能代替真机结果。
+
+本轮验证：110 项回归检查通过；327 个名称对照一致；字库 966 字符及五个原生字号检查通过；84 种盲注布局和 28 种 Boss 上屏说明边界检查通过；八个桌面双屏预览通过。Boss 中文说明使用完整面板宽度，与目标分数分区显示。真机验证尚未进行。

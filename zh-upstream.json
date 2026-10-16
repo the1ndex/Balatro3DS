@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/idkhan/Balatro3DS",
+  "branch": "zh-cn",
+  "upstream_tag": "v2.0.4-base",
+  "upstream_commit": "6595233bf7df2cb4ac574483c7e63506e7973d31",
+  "local_revision": 1,
+  "synced_on": "2026-10-16",
+  "release_cia_url": "https://github.com/idkhan/Balatro3DS/releases/download/v2.0.4-base/Balatro.cia",
+  "release_cia_sha256": "67b1e21fe1687bb77b42cb4618c844706bff1a2db38c2fafb0ad863ea137ad99",
+  "previous_working_tag": "v2.0.3-zh-fix2"
+}

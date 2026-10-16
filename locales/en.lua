@@ -1,6 +1,7 @@
 return {
     ["language.en"] = "English",
     ["language.zh_CN"] = "Simplified Chinese",
+    ["language.da"] = "Danish",
     ["common.back"] = "Back",
     ["common.continue"] = "Continue",
     ["common.none"] = "None",
@@ -351,10 +352,7 @@ return {
     ["settings.slider.sfx_volume"] = "SFX Volume",
     ["settings.slider.screenshake"] = "Screenshake",
     ["settings.card_art"] = "Card Art",
-    ["settings.art_press_set"] = "Press Set to use",
-    ["settings.art_in_use"] = "In use",
     ["settings.high_contrast"] = "High Contrast",
-    ["settings.art_set"] = "Set",
     ["settings.toggle.reduced_motion"] = "Reduce",
     ["settings.toggle.tilt"] = "Tilt",
     ["settings.toggle.joker_display"] = "Joker Info",

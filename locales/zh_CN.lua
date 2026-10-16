@@ -2,6 +2,7 @@
 return {
     ["language.en"] = "English",
     ["language.zh_CN"] = "简体中文",
+    ["language.da"] = "丹麦语",
     ["common.back"] = "返回",
     ["common.continue"] = "继续",
     ["common.none"] = "无",
@@ -352,10 +353,7 @@ return {
     ["settings.slider.sfx_volume"] = "音效音量",
     ["settings.slider.screenshake"] = "屏幕震动",
     ["settings.card_art"] = "卡面",
-    ["settings.art_press_set"] = "按“设定”以使用",
-    ["settings.art_in_use"] = "使用中",
     ["settings.high_contrast"] = "高对比度",
-    ["settings.art_set"] = "设定",
     ["settings.toggle.reduced_motion"] = "减弱动画",
     ["settings.toggle.tilt"] = "倾斜",
     ["settings.toggle.joker_display"] = "小丑信息",

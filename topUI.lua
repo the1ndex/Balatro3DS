@@ -370,9 +370,8 @@ function TopUI:draw(screen)
         local is_boss_blind = blind_def and blind_def.id == "boss"
         local blind_name_x, blind_name_w = ix - sysDepth * textHeight, iw
         if is_boss_blind then
-            love.graphics.setFont(G.FONTS.PIXEL.MICRO or G.FONTS.PIXEL.SMALL)
-            love.graphics.setColor(G.C.RED)
-            DynaText.draw(self.boss_indicator_text, I18N.text("hud.boss", nil, "BOSS"), blind_name_x + 2, iy + 3, 24, "left")
+            -- The chip identifies the boss without spending a whole word of the narrow title.
+            G:draw_blind_chip_anim(blind_index, blind_name_x + 8, blindPosY + blindHeight / 2, 0.45)
             blind_name_x = blind_name_x + 22
             blind_name_w = blind_name_w - 22
             love.graphics.setFont(G.FONTS.PIXEL.MEDIUM)
@@ -393,35 +392,60 @@ function TopUI:draw(screen)
         local score_box_ix, score_box_iy, score_box_iw, score_box_ih = ix, iy, iw, ih
 
         
-        ix, iy, iw, ih = draw_rect_with_shadow(score_box_ix + math.floor(score_box_iw/3), score_box_iy - 1, 72, score_box_ih, 4, 4, G.C.BLOCK.BACK, G.C.BLOCK.SHADOW, 2, depthOffset)
-
-        G:draw_blind_chip_anim(
-            blind_index,
-            score_box_ix + math.floor(score_box_iw / 6) - 2,
-            score_box_iy + math.floor(score_box_ih / 2),
-            1.1
-        )
-        
-        local show_boss_effect = G.STATE == G.STATES.SELECTING_HAND and blind_def and blind_def.id == "boss"
+        local show_boss_effect = G.STATE == G.STATES.SELECTING_HAND and is_boss_blind
         if show_boss_effect then
-            -- The reference keeps each boss debuff visible in its blind UI
-            -- (`reference/Balatro/functions/UI_definitions.lua:2933-2979`). Reuse the
-            -- readout's blind block so the 320x240 touch screen remains uncluttered.
-            local effect = G.get_boss_effect_text and G:get_boss_effect_text() or ""
-            love.graphics.setFont(G.FONTS.PIXEL.MICRO or G.FONTS.PIXEL.SMALL)
-            love.graphics.setColor(G.C.WHITE)
-            -- Shaped once: a boss's debuff text is fixed for the whole blind, and a wrapped
-            -- printf is 265 us against 16 for a batch that was shaped already.
-            TextCache.printf(effect, score_box_ix + 34 - sysDepth * textHeight, score_box_iy + 2, score_box_iw - 36, "left")
-            love.graphics.setFont(G.FONTS.PIXEL.SMALL)
-            love.graphics.setColor(G.C.WHITE)
-            TextCache.print(I18N.text("hud.score", nil, "Score"), score_box_ix + 34 - sysDepth * textHeight, score_box_iy + score_box_ih - 21)
+            ix, iy, iw, ih = draw_rect_with_shadow(score_box_ix - 4, score_box_iy - 4,
+                score_box_iw + 8, score_box_ih + 8, 4, 4, G.C.BLOCK.BACK, G.C.BLOCK.SHADOW, 2, depthOffset)
+        else
+            ix, iy, iw, ih = draw_rect_with_shadow(score_box_ix + math.floor(score_box_iw/3), score_box_iy - 1,
+                72, score_box_ih, 4, 4, G.C.BLOCK.BACK, G.C.BLOCK.SHADOW, 2, depthOffset)
+            G:draw_blind_chip_anim(blind_index, score_box_ix + math.floor(score_box_iw / 6) - 2,
+                score_box_iy + math.floor(score_box_ih / 2), 1.1)
+        end
+        if show_boss_effect then
+            -- Give the ability the full width; keep a separate foot row for the target.
+            local text_x = ix - sysDepth * textHeight
+            local small = G.FONTS.PIXEL.SMALL
+            local label = I18N.text("hud.score", nil, "Score")
+            local label_w = small:getWidth(label) + 3
             local bossReq = NumberFormat.format(math.floor(blind_target))
-            love.graphics.setFont(Fonts.fit(G, G.FONTS.PIXEL.MEDIUM, bossReq, score_box_iw - 36))
+            local row_h = small:getHeight()
+            local row_y = iy + ih - row_h
+            love.graphics.setFont(small)
+            love.graphics.setColor(G.C.WHITE)
+            TextCache.print(label, text_x, row_y)
             love.graphics.setColor(G.C.RED)
-            -- The blind's target does not change while the blind is being played.
-            TextCache.printf(bossReq, score_box_ix + 34 - sysDepth * textHeight,
-                score_box_iy + score_box_ih - 14, score_box_iw - 36, "center")
+            TopUI.center_text_juiced(bossReq, text_x + label_w, row_y, iw - label_w, row_h)
+
+            local effect = G.get_boss_effect_text and G:get_boss_effect_text() or ""
+            local max_h = row_y - iy - 2
+            local layout = self._boss_ability_layout
+            if not layout or layout.text ~= effect or layout.font ~= small or layout.width ~= iw then
+                local Utf8 = require("utf8_text")
+                local lines = Utf8.wrap_lines(small, effect, iw)
+                if I18N.get_language() == "zh_CN" and #lines > 1 then
+                    local count, low, high = #lines, small:getHeight()*2, iw
+                    while low < high do
+                        local mid = math.floor((low+high)/2)
+                        if #Utf8.wrap_lines(small,effect,mid) <= count then high=mid else low=mid+1 end
+                    end
+                    lines = Utf8.wrap_lines(small,effect,low)
+                end
+                local max_w = 0
+                for _,line in ipairs(lines) do max_w = math.max(max_w, small:getWidth(line)) end
+                layout = {text=effect, font=small, width=iw, lines=lines, max_w=max_w}
+                self._boss_ability_layout = layout
+            end
+            local block_h = math.max(1, #layout.lines) * small:getHeight()
+            local scale = math.min(1, max_h / block_h, iw / math.max(1, layout.max_w))
+            love.graphics.setColor(G.C.WHITE)
+            love.graphics.push()
+            love.graphics.translate(text_x + iw * (1-scale)/2, iy + (max_h-block_h*scale)/2)
+            love.graphics.scale(scale,scale)
+            for i,line in ipairs(layout.lines) do
+                TextCache.print(line, (iw-small:getWidth(line))/2, (i-1)*small:getHeight())
+            end
+            love.graphics.pop()
         else
             love.graphics.setColor(G.C.WHITE)
             love.graphics.setFont(G.FONTS.PIXEL.SMALL)
