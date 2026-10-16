@@ -407,4 +407,9 @@ return {
     -- Leftovers
     ["settings.art_default"] = "默认",
     ["hand.none"] = "无",
+    ["shop.continue_label"] = "下一轮",
+    ["shop.hold"] = "长按",
+    ["blind.skip_short"] = "跳过",
+    ["spectral.ectoplasm_penalty"] = "为随机小丑牌添加负片，手牌上限 -{count}",
+    ["common.or"] = "或",
 }

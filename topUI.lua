@@ -448,15 +448,18 @@ function TopUI:draw(screen)
     -- Round Score, Chips and Mult
     love.graphics.setColor(G.C.BLOCK.SHADOW)
     local width = 64
-    ix, iy, iw, ih = draw_rounded_rect(titlePosX + (width * 2) - 4, titlePosY, titleWidth, math.floor(titleHeight/3.5), 4, 4, "fill")
+    local score_row_height = math.max(math.floor(titleHeight/3.5), G.FONTS.PIXEL.MEDIUM:getHeight() + 12)
+    ix, iy, iw, ih = draw_rounded_rect(titlePosX + (width * 2) - 4, titlePosY, titleWidth, score_row_height, 4, 4, "fill")
     
     love.graphics.setFont(G.FONTS.PIXEL.SMALL)
     love.graphics.setColor(G.C.WHITE)
-    TextCache.print(I18N.text("hud.round_score_1", nil, "Round"), ix, iy - 3)
-    TextCache.print(I18N.text("hud.round_score_2", nil, "Score"), ix, iy + 7)
+    local score_label = I18N.text("hud.round_score_1", nil, "Round")
+        .. (I18N.get_language() == "zh_CN" and "" or " ")
+        .. I18N.text("hud.round_score_2", nil, "Score")
+    local paneOffset = math.min(62, G.FONTS.PIXEL.SMALL:getWidth(score_label) + 4)
+    TopUI.center_text_juiced(score_label, ix, iy, paneOffset - 4, ih)
 
     love.graphics.setColor(G.C.PANEL)
-    local paneOffset = 30
     ix, iy, iw, ih = draw_rounded_rect(ix + paneOffset, iy, iw - paneOffset, ih, 2, 2, "fill")
 
     -- The eased count-up value, not `G.round_score`: the fit has to follow what is actually on
@@ -466,11 +469,11 @@ function TopUI:draw(screen)
     local score = self:score_readout()
     love.graphics.setFont(Fonts.fit(G, G.FONTS.PIXEL.MEDIUM, score, iw))
     love.graphics.setColor(G.C.WHITE)
-    TopUI.center_text(score, ix - sysDepth * textHeight, iy -1, iw, ih)
+    TopUI.center_text_juiced(score, ix - sysDepth * textHeight, iy, iw, ih)
 
 
     love.graphics.setColor(G.C.BLOCK.SHADOW)
-    ix, iy, iw, ih = draw_rounded_rect(titlePosX + (width * 2) - 4, titlePosY + math.floor(titleHeight/3.5) + 4, titleWidth, titleHeight - math.floor(titleHeight/3.5) - 3, 4, 4, "fill")
+    ix, iy, iw, ih = draw_rounded_rect(titlePosX + (width * 2) - 4, titlePosY + score_row_height + 4, titleWidth, titleHeight - score_row_height - 3, 4, 4, "fill")
 
     love.graphics.setColor(G.C.WHITE)
     love.graphics.setFont(G.FONTS.PIXEL.MEDIUM)
@@ -819,9 +822,9 @@ function TopUI.LabeledField(string, value, x, y, iw, ih, fieldColor, juice)
         ix, iy, iw, ih = draw_rounded_rect(ix, iy, iw, ih, 4, 4,"fill")
     end
 
-    love.graphics.setFont(G.FONTS.PIXEL.MEDIUM)
+    love.graphics.setFont(Fonts.fit(G, G.FONTS.PIXEL.MEDIUM, tostring(value), iw))
     love.graphics.setColor(fieldColor)
-    TopUI.center_text_juiced(value, ix - sysDepth * textHeight, iy - 1, iw, ih, juice)
+    TopUI.center_text_juiced(value, ix - sysDepth * textHeight, iy, iw, ih, juice)
 
 end
 
@@ -882,28 +885,20 @@ end
 --- every frame except the quarter second after a counter changes, and costs one nil test.
 --- @param scale number|nil Pop scale from the baked curve
 function TopUI.center_text_juiced(string, x, y, iw, ih, scale)
-    if not scale then
-        return TopUI.center_text(string, x, y, iw, ih)
-    end
-
-    -- The counters sit in 48 px boxes with the X between them, so a wide number must not be
-    -- allowed to grow past its box. A number that already fills the box only dips.
-    local w = love.graphics.getFont():getWidth(tostring(string or ""))
-    if w > 0 then
-        local cap = iw / w
-        if cap < 1 then cap = 1 end
-        if scale > cap then scale = cap end
-    end
-
-    local cx = x + iw * 0.5
-    local cy = y + ih * 0.5
+    -- A readout is one line. printf would wrap a ratio or a large number out of its panel.
+    local text = tostring(string or "")
+    local font = love.graphics.getFont()
+    local width, height = font:getWidth(text), font:getHeight()
+    local fit = math.min(1, iw / math.max(1, width), ih / math.max(1, height))
+    local pop = math.min(scale or 1, iw / math.max(1, width), ih / math.max(1, height))
+    if not scale then pop = fit end
+    local px, py = x + (iw - width * pop) / 2, y + (ih - height * pop) / 2
     love.graphics.push()
-    love.graphics.translate(cx, cy)
-    love.graphics.scale(scale, scale)
-    love.graphics.translate(-cx, -cy)
-    local xval, yval = TopUI.center_text(string, x, y, iw, ih)
+    love.graphics.translate(px, py)
+    love.graphics.scale(pop, pop)
+    love.graphics.print(text, 0, 0)
     love.graphics.pop()
-    return xval, yval
+    return px, py
 end
 
 function TopUI:init()

@@ -27,6 +27,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from bcfnt import normalize_metrics
 
 
 def collect_characters(paths):
@@ -78,7 +79,8 @@ def bake_height(mkbcfnt, ttf, target, out_path):
         trial = os.path.join(tmp, "trial.bcfnt")
         # Cell height grows with point size and lands near 1.5x it for these faces; walk the
         # plausible range rather than trusting the ratio.
-        for size in range(max(4, target // 3), target + 2):
+        for quarter in range(4 * max(4, target // 3), 4 * (target + 2)):
+            size = quarter / 4
             subprocess.run([mkbcfnt, ttf, "-s", str(size), "-o", trial], check=True,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             h = cell_height(trial)
@@ -100,6 +102,7 @@ def bake_height_exact(mkbcfnt, ttf, target, out_path):
     produced = bake_height(mkbcfnt, ttf, target, out_path)
     if os.path.exists(out_path + ".best"):
         os.remove(out_path + ".best")
+    normalize_metrics(out_path)
     return produced
 
 

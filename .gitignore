@@ -30,3 +30,9 @@ conf.lua
 
 # Reference material + review notes (not for version control)
 reference/
+
+# Local Chinese UI validation
+/work/
+
+# Superseded generated Chinese font cell (not used by current ladder)
+/resources/fonts/lang/zh_CN_h26.bcfnt

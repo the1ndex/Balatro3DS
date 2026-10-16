@@ -567,7 +567,7 @@ function love.gamepadreleased(_, button)
 
         local hold_threshold = InputBindings.GESTURES.shop_exit_hold_ms / 1000
         if G.STATE == G.STATES.SHOP and held and held >= hold_threshold
-            and G.get_gamepad_focus_layer and G:get_gamepad_focus_layer() == "hand" then
+            and not swept and not G.dragging then
             G:continue_from_shop()
         end
     end
