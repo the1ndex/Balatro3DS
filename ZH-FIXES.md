@@ -1,4 +1,4 @@
-当前维护分支为 `zh-cn`；现已同步上游 2.0.4，最新记录见 MAINTENANCE.md 和 zh-upstream.json。以下保留 2.0.3 修订 2 的历史说明。
+当前维护分支为 `zh-cn`；现已同步上游 2.0.5，最新记录见 MAINTENANCE.md 和 zh-upstream.json。以下保留 2.0.3 修订 2 的历史说明。
 
 # 2.0.3 中文界面修订 2
 

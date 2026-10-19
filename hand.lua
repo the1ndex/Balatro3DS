@@ -1114,6 +1114,76 @@ function Hand:discard_card_at_index(index, opts)
     return self:remove_card_at_index(index)
 end
 
+--- The Hook's forced discard: the cards at `indices` leave as one discard, the way the
+--- reference highlights both and runs `discard_cards_from_highlighted` once (`blind.lua`).
+--- Left to right, each card is on the discard pile before the jokers hear about it, every
+--- card's event carries the whole discard, and only the last is `is_last` -- so Green Joker
+--- loses one Mult per Hook rather than one per card, and Trading Card sees a one-card discard
+--- only when one card was left to take. Discarded, not destroyed: no `on_destroy`.
+---@param indices integer[]
+---@return integer removed
+function Hand:discard_cards_by_hook(indices)
+    if not self.game then return 0 end
+    local picked = {}
+    for _, i in ipairs(indices or {}) do
+        if self.card_nodes[i] and self.cards[i] then picked[#picked + 1] = i end
+    end
+    table.sort(picked)
+    local nodes, cards = {}, {}
+    for _, i in ipairs(picked) do
+        nodes[#nodes + 1] = self.card_nodes[i]
+        cards[#cards + 1] = self.cards[i]
+    end
+    if #nodes == 0 then return 0 end
+
+    local deck = self.game.deck
+    for _, cd in ipairs(cards) do
+        if deck and deck.push_discard then deck:push_discard(cd) end
+    end
+    if self.game.emit_joker_event then
+        for k, node in ipairs(nodes) do
+            local ctx = {
+                event = "on_discard",
+                event_name = "on_discard",
+                discarded_nodes = nodes,
+                discarded_cards = cards,
+                discard_reason = "discard",
+                hook = true,
+                card_node = node,
+                card = cards[k],
+                card_index = k,
+                is_last = (k == #nodes),
+            }
+            -- The card's own seal fires first, and it fires at all: the reference's forced
+            -- discard reaches `calculate_seal{discard = true}` (`state_events.lua:400`), so a
+            -- Purple Seal makes its Tarot whether the player chose the discard or The Hook did.
+            -- No `pre_discard` batch: the only joker on it, Burnt, explicitly ignores The Hook.
+            if node.emit_hand_event then node:emit_hand_event("on_discard", ctx) end
+            self.game:emit_joker_event("on_discard", ctx)
+        end
+    end
+
+    local gone = {}
+    for _, node in ipairs(nodes) do gone[node] = true end
+    for i = #self.card_nodes, 1, -1 do
+        local node = self.card_nodes[i]
+        if gone[node] then
+            for s = #self.selected, 1, -1 do
+                if self.selected[s] == node then table.remove(self.selected, s) end
+            end
+            node.selected = false
+            self.game:remove(node)
+            table.remove(self.cards, i)
+            table.remove(self.card_nodes, i)
+            if self.game.active_tooltip_card == node then self.game.active_tooltip_card = nil end
+        end
+    end
+    self:layout(false)
+    if self.game.restore_hand_draw_order then self.game:restore_hand_draw_order() end
+    self:calculate_play()
+    return #nodes
+end
+
 --- Remove a card from the hand by index without sending it to the discard pile (destroyed / gone from the run).
 ---@param index integer
 ---@return boolean
@@ -2419,6 +2489,7 @@ function Hand:play_selected()
     end
 
     G.hands = G.hands - 1
+    G.round_hands_played = (tonumber(G.round_hands_played) or 0) + 1
     -- `ease_hands_played` does the same for the hands counter (`common_events.lua:176`).
     Sfx.play("chips2")
     G.handsPlayed = G.handsPlayed + 1
@@ -2903,10 +2974,78 @@ function Hand:calculate_play()
         end
     end
 
+    --- The cards of the flush: the first suit, in the reference's order, that enough cards
+    --- (Wilds included) share. With Four Fingers that can leave one played card out
+    --- (`get_flush`, reference/Balatro/functions/misc_functions.lua).
+    local function flush_nodes()
+        for _, suit in ipairs({ "Spades", "Hearts", "Clubs", "Diamonds" }) do
+            local want = normalized_suit_for_scoring(suit)
+            local t = {}
+            for _, node in ipairs(ordered) do
+                local data = node.card_data or {}
+                if data.enhancement == "wild"
+                    or (data.enhancement ~= "stone" and data.suit ~= nil
+                        and normalized_suit_for_scoring(data.suit) == want) then
+                    t[#t + 1] = node
+                end
+            end
+            if #t >= min_straight_flush_cards then return t end
+        end
+        return {}
+    end
+
+    --- The cards of the straight: every card whose rank is in the run, an Ace counting low
+    --- or high, and Shortcut letting the run skip one rank at a time (`get_straight`).
+    local function straight_nodes()
+        local by_rank = {}
+        for _, node in ipairs(ordered) do
+            local data = node.card_data or {}
+            local r = data.enhancement ~= "stone" and tonumber(data.rank) or nil
+            if r and r >= 2 and r <= 14 then
+                by_rank[r] = by_rank[r] or {}
+                table.insert(by_rank[r], node)
+            end
+        end
+        local t, run, skipped, found = {}, 0, false, false
+        for j = 1, 14 do
+            local cards = by_rank[j == 1 and 14 or j]
+            if cards then
+                run = run + 1
+                skipped = false
+                for _, node in ipairs(cards) do t[#t + 1] = node end
+            elseif has_shortcut and not skipped and j ~= 14 then
+                skipped = true
+            else
+                if found then break end
+                run, skipped, t = 0, false, {}
+            end
+            if run >= min_straight_flush_cards then found = true end
+        end
+        return found and t or {}
+    end
+
+    --- Mark `groups` of nodes as scoring; with none found, fall back to every played card.
+    local function mark_nodes(...)
+        local any = false
+        for _, group in ipairs({ ... }) do
+            for _, node in ipairs(group) do
+                node.counts_for_play_score = true
+                any = true
+            end
+        end
+        if not any then mark_all_ordered() end
+    end
+
     if G:hasJoker("j_splash") then
         mark_all_ordered()
-    elseif hi == 1 or hi == 2 or hi == 3 or hi == 4 or hi == 6 or hi == 7 or hi == 8 then
+    elseif hi == 1 or hi == 2 or hi == 3 or hi == 6 then
         mark_all_ordered()
+    elseif hi == 4 then
+        mark_nodes(flush_nodes(), straight_nodes())
+    elseif hi == 7 then
+        mark_nodes(flush_nodes())
+    elseif hi == 8 then
+        mark_nodes(straight_nodes())
     elseif hi == 5 then
         for r, c in pairs(rank_counts) do
             if c == 4 then

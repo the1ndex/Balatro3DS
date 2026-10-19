@@ -8,7 +8,9 @@ lua=LuaRuntime(unpack_returned_tuples=True)
 results=[]
 suites=["test_localization","test_fonts","test_input_bindings","test_zh_ui_fixes",
     "test_milestone_queue","test_shop_rendering","test_shop_layering","test_tooltip_wrap",
-    "test_accessibility_settings","test_game_over_summary","test_deck_view","test_zh_upstream_sync"]
+    "test_accessibility_settings","test_game_over_summary","test_deck_view","test_booster_close","test_booster_no_duplicates",
+    "test_boss_disable","test_burglar","test_deck_modifiers","test_hand_eval",
+    "test_joker_effects","test_p0_consumables","test_zh_upstream_sync"]
 for name in suites:
     suite=lua.eval("require")("tests."+name)
     for _,test in suite["_order"].items():

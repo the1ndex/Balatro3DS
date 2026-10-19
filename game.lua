@@ -300,6 +300,7 @@ function Game:init(seed)
     self._boss_reroll_btn_rect = nil
     self.hand_play_counts = {}
     self.blind_hand_play_counts = {}
+    self.round_hands_played = 0
     self._ante_played_card_uids = {}
     self.current_boss_blind_id = nil
     self.bosses_used_this_cycle = {}
@@ -753,10 +754,17 @@ function Game:get_effective_hands_per_round()
     hands = hands + SMODS.modifier_total(self, "hands")
     for _, j in ipairs(self.jokers or {}) do
         local id = j and j.def and j.def.id
-        if id == "j_burglar" then hands = hands + 3 end
         if id == "j_troubadour" then hands = hands - 1 end
     end
     return math.max(1, hands)
+end
+
+--- Hands spent this round, voided ones included (reference `current_round.hands_played`).
+--- The first-hand Jokers ask this rather than comparing hands left to the per-round total,
+--- which The Needle and Burglar both move.
+---@return integer
+function Game:get_round_hands_played()
+    return tonumber(self.round_hands_played) or 0
 end
 
 function Game:get_effective_discards_per_round()
@@ -834,19 +842,33 @@ function Game:boss_reset_for_new_blind()
         fish_face_down_draws = 0,
         serpent_draws_pending = 0,
         sold_joker_this_blind = false,
-        crimson_disabled_joker = nil,
+        crimson_disabled_sort_id = nil,
         disable_current_boss_ability = false,
         clear_card_debuffs_after_win = false,
+        needle_hands_sub = 0,
+        water_discards_sub = 0,
     }
-    local boss_id = self:get_boss_blind_id_for_blind()
     self:restore_joker_facing()
+    -- Chicot disables the boss as the blind is set, as `Blind:disable` does from its
+    -- `setting_blind` (`card.lua`, Chicot): the same undo Luchador does mid-round, and it
+    -- stays disabled if Chicot is sold later in the round.
+    if tonumber(self.current_blind_index) == 3 and self.current_boss_blind_id
+        and self:hasJoker("j_chicot") then
+        self.boss_runtime.disable_current_boss_ability = true
+        self:_boss_disable_reduce_target(self.current_boss_blind_id)
+        return
+    end
+    local boss_id = self:get_boss_blind_id_for_blind()
     if not boss_id then return end
-    if self:hasJoker("j_chicot") then return end
 
+    -- What these take is recorded so disabling the boss can hand it back
+    -- (`blind.lua`, `hands_sub` / `discards_sub`).
     if boss_id == "bl_needle" then
+        self.boss_runtime.needle_hands_sub = math.max(0, (tonumber(self.hands) or 1) - 1)
         self.hands = 1
     end
     if boss_id == "bl_water" then
+        self.boss_runtime.water_discards_sub = math.max(0, tonumber(self.discards) or 0)
         self.discards = 0
     end
     if boss_id == "bl_final_leaf" then
@@ -882,14 +904,14 @@ function Game:boss_on_hand_refilled(is_new_blind, refill_reason)
             local bx = (b.T and b.T.x) or (b.VT and b.VT.x) or 0
             return ax < bx
         end)
+        -- The pick is a Joker, not a slot: the reference debuffs that card, so the debuff
+        -- follows it when the row is reordered (`blind.lua`, Crimson Heart).
         local count = #sorted
-        if count <= 0 then
-            self.boss_runtime.crimson_disabled_joker = nil
-        elseif count == 1 then
-            self.boss_runtime.crimson_disabled_joker = 1
-        else
-            local prev_idx = tonumber(self.boss_runtime.crimson_disabled_joker)
-            local prev_joker = (prev_idx and prev_idx >= 1 and prev_idx <= count) and sorted[prev_idx] or nil
+        local pick = nil
+        if count == 1 then
+            pick = sorted[1]
+        elseif count > 1 then
+            local prev_joker = self:boss_crimson_disabled_joker_node()
             local candidates = {}
             for i = 1, count do
                 if sorted[i] ~= prev_joker then
@@ -897,11 +919,14 @@ function Game:boss_on_hand_refilled(is_new_blind, refill_reason)
                 end
             end
             if #candidates == 0 then
-                self.boss_runtime.crimson_disabled_joker = self:random("crimson_heart", 1, count)
+                pick = sorted[self:random("crimson_heart", 1, count)]
             else
-                self.boss_runtime.crimson_disabled_joker = candidates[self:random("crimson_heart", 1, #candidates)]
+                pick = sorted[candidates[self:random("crimson_heart", 1, #candidates)]]
             end
         end
+        self.boss_runtime.crimson_disabled_sort_id = pick and pick._sort_id or nil
+        self.boss_runtime.crimson_disabled_joker = nil
+        self._crimson_disabled_cache = nil
     end
     -- Cerulean Bell forces its card once the hand it is choosing from is actually in front of
     -- the player. The reference picks in `Blind:drawn_to_hand` (`blind.lua:574-586`), which
@@ -994,15 +1019,16 @@ function Game:boss_after_play_before_draw()
     if boss_id ~= "bl_hook" then return end
     local hand = self.hand
     if not hand or not hand.cards then return end
-    local removed = 0
+    -- Pick from a shrinking list as the reference does, then discard the picks together.
+    local remaining = {}
+    for i = 1, #hand.cards do remaining[i] = i end
+    local picks = {}
     for _ = 1, 2 do
-        if #hand.cards <= 0 then break end
-        local i = self:random("hook", 1, #hand.cards)
-        if hand.discard_card_at_index then
-            hand:discard_card_at_index(i, { hook = true })
-            removed = removed + 1
-        end
+        if #remaining <= 0 then break end
+        local k = self:random("hook", 1, #remaining)
+        picks[#picks + 1] = table.remove(remaining, k)
     end
+    local removed = hand.discard_cards_by_hook and hand:discard_cards_by_hook(picks) or 0
     if removed > 0 then
         self:notify_boss_effect_triggered({ reason = "hook_discard", count = removed })
     end
@@ -1098,9 +1124,8 @@ function Game:boss_apply_on_hand_submitted(selected_nodes)
 
     if boss_id == "bl_tooth" then
         local n = type(selected_nodes) == "table" and #selected_nodes or 0
-        local floor = self:get_money_loss_floor()
         local before = tonumber(self.money) or 0
-        self.money = math.max(floor, (tonumber(self.money) or 0) - n)
+        self.money = tonumber(self.money) or 0 - n
         if (tonumber(self.money) or 0) < before then
             self:notify_boss_effect_triggered({ reason = "tooth_money_loss", amount = before - (tonumber(self.money) or 0) })
         end
@@ -1173,16 +1198,25 @@ function Game:boss_crimson_disabled_joker_node()
     local cache = self._crimson_disabled_cache
     if cache and cache.frame == frame then return cache.node end
 
-    local sorted = self._crimson_sort_scratch or {}
-    self._crimson_sort_scratch = sorted
-    for i = #sorted, 1, -1 do sorted[i] = nil end
-    for _, j in ipairs(self.jokers) do
-        if j then sorted[#sorted + 1] = j end
+    local rt = self.boss_runtime or {}
+    local node = nil
+    local sort_id = tonumber(rt.crimson_disabled_sort_id)
+    if sort_id then
+        for _, j in ipairs(self.jokers) do
+            if j and tonumber(j._sort_id) == sort_id then node = j break end
+        end
+    elseif tonumber(rt.crimson_disabled_joker) then
+        -- A save from before the pick was a Joker: it was a left-to-right slot.
+        local sorted = self._crimson_sort_scratch or {}
+        self._crimson_sort_scratch = sorted
+        for i = #sorted, 1, -1 do sorted[i] = nil end
+        for _, j in ipairs(self.jokers) do
+            if j then sorted[#sorted + 1] = j end
+        end
+        table.sort(sorted, joker_left_of)
+        local blocked = tonumber(rt.crimson_disabled_joker)
+        node = (blocked >= 1 and blocked <= #sorted) and sorted[blocked] or nil
     end
-    table.sort(sorted, joker_left_of)
-
-    local blocked = tonumber(self.boss_runtime and self.boss_runtime.crimson_disabled_joker) or -1
-    local node = (blocked >= 1 and blocked <= #sorted) and sorted[blocked] or nil
     self._crimson_disabled_cache = { frame = frame, node = node }
     return node
 end
@@ -1208,18 +1242,49 @@ end
 
 function Game:boss_on_joker_sold(sold_joker)
     if sold_joker and sold_joker.def and sold_joker.def.id == "j_luchador" and self:get_active_boss_blind_id() then
-        self.boss_runtime = self.boss_runtime or {}
-        self.boss_runtime.disable_current_boss_ability = true
-        self.boss_runtime.verdant_leaf_active = false
-        -- Disabling the boss undoes its effects, including a face-down Joker row
-        -- (`blind.lua:357`).
-        self:restore_joker_facing()
+        self:disable_boss_blind()
         return
     end
     if self:get_active_boss_blind_id() == "bl_final_leaf" then
         self.boss_runtime.verdant_leaf_active = false
         self.boss_runtime.sold_joker_this_blind = true
     end
+end
+
+--- The Wall and Violet Vessel give back their extra size when disabled (`blind.lua`,
+--- `Blind:disable`: chips / 2 and / 3).
+function Game:_boss_disable_reduce_target(boss_id)
+    local div = (boss_id == "bl_wall" and 2) or (boss_id == "bl_final_vessel" and 3) or nil
+    if not div then return end
+    self.current_blind_target = math.floor((tonumber(self.current_blind_target) or 0) / div)
+end
+
+--- Disable the live boss mid-round and undo what it already did, as the reference's
+--- `Blind:disable` does: Jokers turned back up, The Water's discards and The Needle's hands
+--- returned, cards The House, The Wheel, The Fish or The Mark dealt face down turned over, and
+--- The Wall / Violet Vessel shrunk. Rules that are checked as they apply (debuffs, Crimson
+--- Heart, The Psychic) simply stop, because the boss no longer reads as active.
+function Game:disable_boss_blind()
+    local boss_id = self:get_active_boss_blind_id()
+    if not boss_id then return end
+    self.boss_runtime = self.boss_runtime or {}
+    local rt = self.boss_runtime
+    rt.disable_current_boss_ability = true
+    rt.verdant_leaf_active = false
+    self:restore_joker_facing()
+    if boss_id == "bl_water" then
+        self.discards = (tonumber(self.discards) or 0) + (tonumber(rt.water_discards_sub) or 0)
+    end
+    if boss_id == "bl_needle" then
+        self.hands = (tonumber(self.hands) or 0) + (tonumber(rt.needle_hands_sub) or 0)
+    end
+    if boss_id == "bl_house" or boss_id == "bl_wheel" or boss_id == "bl_fish" or boss_id == "bl_mark" then
+        for _, node in ipairs((self.hand and self.hand.card_nodes) or {}) do
+            if node and node.face_up == false and node.set_face_up then node:set_face_up(true) end
+        end
+        if self.hand and self.hand.calculate_play then self.hand:calculate_play() end
+    end
+    self:_boss_disable_reduce_target(boss_id)
 end
 
 function Game:notify_boss_effect_triggered(meta)
@@ -2597,7 +2662,12 @@ function Game:restore_run_deck_stake_from_snapshot(snapshot)
     if type(snapshot) ~= "table" then return end
     local deck_id = snapshot.selected_deck_id
     if type(deck_id) == "string" and deck_id ~= "" then
-        self.selected_deck_id = deck_id
+        local def = DECK_DEFS_BY_ID and DECK_DEFS_BY_ID[deck_id]
+        if def and self.apply_deck_modifiers then
+            self:apply_deck_modifiers(def)
+        else
+            self.selected_deck_id = deck_id
+        end
     end
     local stake_id = snapshot.selected_stake_id
     if type(stake_id) == "string" and stake_id ~= "" then
@@ -4856,6 +4926,8 @@ function Game:build_run_snapshot()
                 random_rank = j.random_rank,
                 sort_id = j._sort_id,
                 random_hand = j.random_hand,
+                -- Amber Acorn's face-down row has to survive a save and resume.
+                face_down = j.face_up == false or nil,
                 -- A mod Joker's per-copy `card.ability` (`smods.lua`).
                 ability = j.ability and SMODS.deep_copy(j.ability) or nil,
             }
@@ -4933,6 +5005,7 @@ function Game:build_run_snapshot()
         hand_play_counts = copy_table(self.hand_play_counts or {}),
         frozen_most_played_hand_index = self.frozen_most_played_hand_index,
         blind_hand_play_counts = copy_table(self.blind_hand_play_counts or {}),
+        round_hands_played = tonumber(self.round_hands_played) or 0,
         _ante_played_card_uids = copy_table(self._ante_played_card_uids or {}),
         boss_runtime = copy_table(self.boss_runtime or {}),
         jokers_on_bottom = self.jokers_on_bottom == true,
@@ -5129,6 +5202,14 @@ function Game:load_run_snapshot(snapshot)
     self.hand_play_counts = copy_table(snapshot.hand_play_counts or {})
     self.frozen_most_played_hand_index = tonumber(snapshot.frozen_most_played_hand_index) or nil
     self.blind_hand_play_counts = copy_table(snapshot.blind_hand_play_counts or {})
+    self.round_hands_played = tonumber(snapshot.round_hands_played)
+    if not self.round_hands_played then
+        -- Saves from before the counter: the per-blind tally misses only voided hands.
+        self.round_hands_played = 0
+        for _, count in pairs(self.blind_hand_play_counts) do
+            self.round_hands_played = self.round_hands_played + (tonumber(count) or 0)
+        end
+    end
     self._ante_played_card_uids = copy_table(snapshot._ante_played_card_uids or {})
     self.boss_runtime = copy_table(snapshot.boss_runtime or {})
     self.jokers_on_bottom = snapshot.jokers_on_bottom == true
@@ -5219,6 +5300,9 @@ function Game:load_run_snapshot(snapshot)
                 if tonumber(jrec.sort_id) then
                     j._sort_id = tonumber(jrec.sort_id)
                     self._next_joker_sort_id = math.max(self._next_joker_sort_id, j._sort_id + 1)
+                end
+                if jrec.face_down == true and j.set_face_up then
+                    j:set_face_up(false)
                 end
                 if jrec.random_suit ~= nil or jrec.random_rank ~= nil or jrec.random_hand ~= nil then
                     local restore = {}
@@ -6416,6 +6500,21 @@ function Game:hand_ready_for_tarot_selection()
     return true
 end
 
+--- Spectrals that destroy random cards held in hand. They need a dealt hand, and more than one
+--- card in it, so they cannot be spent in the shop for their payout alone (`card.lua`,
+--- `can_use_consumeable`).
+local HAND_DESTROYING_SPECTRALS = {
+    spectral_familiar = true, spectral_grim = true,
+    spectral_incantation = true, spectral_immolate = true,
+}
+
+---@return boolean false when `sid` destroys cards in hand and there is no hand to destroy from
+function Game:spectral_hand_requirement_met(sid)
+    if not HAND_DESTROYING_SPECTRALS[sid] then return true end
+    if not self:hand_ready_for_tarot_selection() then return false end
+    return #(self.hand.card_nodes or {}) > 1
+end
+
 function Game:ordered_selected_hand_count()
     if not self.hand or not self.hand.ordered_selected_nodes then return 0 end
     return #self.hand:ordered_selected_nodes()
@@ -6516,6 +6615,7 @@ function Game:consumable_use_enabled(idx)
         if (sid == "spectral_ectoplasm" or sid == "spectral_hex") and #self:editionless_jokers() < 1 then
             return false
         end
+        if not self:spectral_hand_requirement_met(sid) then return false end
         local need_hand = false
         local s = c.select
         if type(s) == "table" and (s.exact or 0) > 0 then
@@ -6665,6 +6765,7 @@ end
 ---@param id string
 ---@return boolean
 function Game:consumable_center_in_play(id)
+    if id ~= nil and id == self._consumable_in_use_id then return true end
     for _, c in ipairs(self.consumables or {}) do
         if type(c) == "table" and c.id == id then return true end
     end
@@ -7037,8 +7138,18 @@ end
 
 --- Apply the runtime effect for a Consumable and play a simple SFX where appropriate.
 ---@param c table
+--- Run a used consumable's effect. The card stays "in play" while it does, so a pool it draws
+--- from cannot hand back another copy of it without Showman: The Emperor cannot make an
+--- Emperor (the reference's used card is still a live card until it dissolves).
 function Game:apply_consumable_effect(c)
     if type(c) ~= "table" then return end
+    local prev = self._consumable_in_use_id
+    self._consumable_in_use_id = c.id
+    self:_apply_consumable_effect(c)
+    self._consumable_in_use_id = prev
+end
+
+function Game:_apply_consumable_effect(c)
     local kind = c.kind
     local id = c.id
     if id then self:discover_item(id) end
@@ -7362,7 +7473,8 @@ function Game:apply_consumable_effect(c)
         end
     elseif id == "tarot_hermit" then
         local m = tonumber(self.money) or 0
-        local gain = math.min(m, 20)
+        -- Never negative: in debt it simply pays nothing (`card.lua`, The Hermit).
+        local gain = math.max(0, math.min(m, 20))
         self.money = m + gain
         if Sfx and Sfx.play_money then Sfx.play_money() end
     elseif id == "tarot_wheel_of_fortune" then
@@ -7626,6 +7738,10 @@ function Game:perform_sell_for_target(sell_target)
             if self.active_tooltip_consumable_index == idx then
                 self.active_tooltip_consumable_index = nil
             end
+            -- The reference's `selling_card` fires for every card sold, not only Jokers
+            -- (`card.lua:1592`), so Campfire counts a sold consumable too. `joker` stays nil:
+            -- the Jokers that react to selling themselves compare it to themselves.
+            self:emit_joker_event("on_joker_sold", { consumable = c, sold_value = value })
             sold = true
         end
     end
@@ -11007,9 +11123,9 @@ function Game:_collect_jokers_in_slot_order()
     end)
     local boss_id = self:get_active_boss_blind_id()
     if boss_id == "bl_final_heart" then
-        local blocked = tonumber(self.boss_runtime and self.boss_runtime.crimson_disabled_joker) or -1
-        if blocked >= 1 and blocked <= #out then
-            table.remove(out, blocked)
+        local blocked = self:boss_crimson_disabled_joker_node()
+        for i = #out, 1, -1 do
+            if out[i] == blocked then table.remove(out, i) end
         end
     end
     return out
@@ -11561,6 +11677,7 @@ function Game:initialize_run_loop()
     self.current_boss_blind_id = nil
     self.hand_play_counts = {}
     self.blind_hand_play_counts = {}
+    self.round_hands_played = 0
     -- The Ox starts a run pointed at High Card (`game.lua:1964`).
     self.frozen_most_played_hand_index = nil
     self.tarots_used = 0
@@ -11781,6 +11898,7 @@ function Game:_commit_selected_blind()
     self.hands = self:get_effective_hands_per_round()
     self.discards = self:get_effective_discards_per_round()
     self.blind_hand_play_counts = {}
+    self.round_hands_played = 0
     self.round_score = 0
     self.last_hand_score = 0
     self._blind_resolution_pending = false
@@ -13779,6 +13897,8 @@ function Game:begin_booster_session(offer, opening_origin)
     local choices = self:_booster_build_choices(offer)
     local return_state = (self.STATE ~= self.STATES.OPEN_BOOSTER) and self.STATE or self.STATES.SHOP
     self._booster_return_state = return_state
+    -- Where the pack sat on the shelf, so the cursor comes back there rather than to Next Round.
+    self._booster_return_focus_rect = (return_state == self.STATES.SHOP) and opening_origin or nil
     if #choices == 0 then
         self:set_state(return_state)
         return
@@ -13904,6 +14024,7 @@ function Game:_restore_booster_session(data)
     end
     self:_booster_destroy_choice_nodes()
     self._booster_return_state = data.return_state or self.STATES.SHOP
+    self._booster_return_focus_rect = nil
     self.booster_session = {
         pack = data.pack,
         size = data.size,
@@ -14011,12 +14132,49 @@ function Game:end_booster_session()
     self.dragging = nil
     self:reset_gamepad_nav()
     local return_state = self._booster_return_state or self.STATES.SHOP
+    local return_rect = self._booster_return_focus_rect
     self._booster_return_state = nil
+    self._booster_return_focus_rect = nil
     self:set_state(return_state)
     if return_state == self.STATES.SHOP then
         self:init_shop_gamepad_nav()
+        self:focus_shop_target_nearest(return_rect)
     end
     self:sync_shop_offer_interactivity()
+end
+
+--- Skip the open pack: what B and the Skip button both do. A pack whose last pick has been
+--- taken is already closing on its own, so cutting that hold short is not a skip and Red Card
+--- does not hear about it.
+function Game:skip_booster_pack()
+    if not self.booster_session then return end
+    if not self._booster_closing then
+        self:emit_joker_event("on_booster_skip", {})
+    end
+    self:end_booster_session()
+end
+
+--- Put the shop cursor on the target nearest `rect` (the slot a just-closed pack came from),
+--- and make it the only highlighted item: anything the pack left selected is cleared.
+---@param rect table|nil
+function Game:focus_shop_target_nearest(rect)
+    local targets = self:build_shop_focus_targets()
+    if type(rect) == "table" then
+        local cx, cy = rect.x + rect.w * 0.5, rect.y + rect.h * 0.5
+        local best_distance
+        for i, t in ipairs(targets) do
+            local r = t.rect
+            if type(r) == "table" then
+                local d = math.abs(r.x + r.w * 0.5 - cx) + math.abs(r.y + r.h * 0.5 - cy)
+                if not best_distance or d < best_distance then
+                    best_distance = d
+                    self._shop_focus_index = i
+                end
+            end
+        end
+    end
+    local target = self.input_mode ~= "touch" and self:get_shop_gamepad_focus() or nil
+    self:sync_shop_gamepad_tooltips(target)
 end
 
 --- After a tarot/spectral from an Arcana/Spectral pack: keep the preview hand in place so
@@ -14072,6 +14230,7 @@ function Game:pack_consumable_can_apply(c)
         if (sid == "spectral_ectoplasm" or sid == "spectral_hex") and #self:editionless_jokers() < 1 then
             return false
         end
+        if not self:spectral_hand_requirement_met(sid) then return false end
         if self:booster_spectral_needs_hand(c) then
             if not self:hand_ready_for_tarot_selection() then return false end
             return self:tarot_selection_requirement_met(c)
@@ -14904,6 +15063,10 @@ function Game:readout_chips_mult()
     -- Picking hand cards inside a booster pack targets a consumable, not a play, so there is no
     -- hand to preview (see `TopUI:draw`).
     if self.STATES and self.STATE == self.STATES.OPEN_BOOSTER then return 0, 0 end
+    -- A selection with a face-down card hides its numbers along with its name and level, or
+    -- the base chips and mult would give the hand away (`get_poker_hand_info`, `'?'`). Playing
+    -- the hand turns the cards over and re-evaluates it, which clears the flag.
+    if self.selectedHandHidden == true then return "?", "?" end
     return tonumber(self.selectedHandChips) or 0, tonumber(self.selectedHandMult) or 0
 end
 
@@ -14914,6 +15077,7 @@ function Game:readout_hand_level()
     if f then return f.level end
     if self.STATES and self.STATE == self.STATES.OPEN_BOOSTER then return nil end
     if not self.selectedHand or self.selectedHand == -1 then return nil end
+    if self.selectedHandHidden == true then return "?" end
     return self.selectedHandLevel or 1
 end
 
