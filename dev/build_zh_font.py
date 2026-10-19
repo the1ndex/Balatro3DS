@@ -44,5 +44,6 @@ font['OS/2'].usWinAscent=font['hhea'].ascent; font['OS/2'].usWinDescent=-font['h
 for rec in font['name'].names:
     if rec.nameID in (1,3,4,6,16):
         rec.string=('Balatro3DS-SC' if rec.nameID==6 else 'Balatro3DS SC').encode(rec.getEncoding())
+font.recalcTimestamp=False
 font.save(ROOT/'resources/fonts/zh_CN.ttf')
 print('Font subset:',len(font.getBestCmap()),'characters;', (ROOT/'resources/fonts/zh_CN.ttf').stat().st_size,'bytes; source-only missing:',repr(''.join(sorted(missing))))

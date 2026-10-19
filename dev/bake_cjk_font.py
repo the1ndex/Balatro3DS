@@ -49,7 +49,7 @@ def subset_font(font_path, chars, out_path):
     from fontTools import subset
 
     options = subset.Options()
-    options.hinting = False
+    options.hinting = True   # retain the prepared face's pixel-grid metrics
     options.layout_features = []      # mkbcfnt draws glyphs one at a time; no shaping
     options.notdef_outline = True
     options.name_IDs = ["*"]
@@ -100,6 +100,8 @@ def bake_height(mkbcfnt, ttf, target, out_path):
 
 def bake_height_exact(mkbcfnt, ttf, target, out_path):
     produced = bake_height(mkbcfnt, ttf, target, out_path)
+    if produced != target:
+        raise SystemExit(f"bake_cjk_font: expected {target}px cells, got {produced}px; refusing a mismatched native sheet")
     if os.path.exists(out_path + ".best"):
         os.remove(out_path + ".best")
     normalize_metrics(out_path)
@@ -119,7 +121,7 @@ def main(argv):
     chars = collect_characters(args.strings)
     with open(args.font, "rb") as fp:
         font_hash = hashlib.sha1(fp.read()).hexdigest()
-    key = hashlib.sha1((font_hash + "".join(chars)).encode("utf-8")).hexdigest()[:16]
+    key = hashlib.sha1(("hinted-finf-v1:" + font_hash + "".join(chars)).encode("utf-8")).hexdigest()[:16]
 
     with tempfile.TemporaryDirectory() as tmp:
         subset_path = None
