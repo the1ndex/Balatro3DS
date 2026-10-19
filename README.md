@@ -39,7 +39,7 @@ Source checkpoints are available as Git tags:
 
 The 2.0.5 maintenance build passed **242 regression checks**, the **327-name official Chinese comparison**, placeholder checks, and verification of all five native font sheets. Desktop checks cover 84 blind-selection layouts, 28 Boss HUDs, and eight dual-screen scenes. The CIA was extracted and all 648 files were checked; its native code, process settings, HOME Menu icon, and banner audio match the official upstream 2.0.5 package.
 
-**This maintenance build has not yet been verified on a physical 3DS.** These checks cover the cases listed above; they do not establish that every translation, layout, or gameplay interaction is correct.
+**This maintenance build has been tested on a Japanese-region New Nintendo 3DS running Luma3DS 13.4. Other models and region variants have not been tested.** These checks cover the cases listed above; they do not establish that every translation, layout, or gameplay interaction is correct.
 
 ## Installation and saves
 
