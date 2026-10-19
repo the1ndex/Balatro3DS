@@ -1,6 +1,6 @@
 # 中文维护分支约定
 
-本仓库的长期维护分支是 `zh-cn`。上游为 `https://github.com/idkhan/Balatro3DS`，remote 名称为 `upstream`。保留 `origin` 指向的本地旧基线，不向上游推送。当前目录虽然叫 `v2.0.3-zh-fixes`，仍继续在此维护，不迁移项目。
+本仓库的长期维护分支是 `zh-cn`。上游为 `https://github.com/idkhan/Balatro3DS`，remote 名称为 `upstream`。用户 fork 为 `https://github.com/the1ndex/Balatro3DS`，remote 名称为 `fork`，中文维护分支推送到 `fork/zh-cn`。保留 `origin` 指向的本地旧基线，不向原作者的 `upstream` 推送。当前目录虽然叫 `v2.0.3-zh-fixes`，仍继续在此维护，不迁移项目。
 
 用户已要求持续同步上游更新。每次同步按以下流程执行：
 
