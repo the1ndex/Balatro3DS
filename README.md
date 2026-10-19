@@ -1,55 +1,97 @@
-# Balatro for Nintendo 3DS
+# Balatro3DS — Chinese UI maintenance fork
 
 **English** | [简体中文](README.zh-CN.md)
 
-The poker roguelike. Balatro is a hypnotically satisfying deckbuilder where you play illegal poker hands, discover game-changing jokers, and trigger adrenaline-pumping, outrageous combos, now on the 3DS.
+A Simplified Chinese maintenance fork of [idkhan/Balatro3DS](https://github.com/idkhan/Balatro3DS), focused on official terminology, readable Chinese fonts, layouts that fit the 3DS screens, and consistent button prompts.
 
-This is a fan-made remake of Balatro. This project is in no way affiliated with LocalThunk, the creator of Balatro. All art and sound effects are originally from the game, only adapted to run on the 3DS hardware. If you want to support the creator or get the full Balatro experience, please buy the game.
+The maintained branch is **[`zh-cn`](https://github.com/the1ndex/Balatro3DS/tree/zh-cn)**. The current build is **`v2.0.5-zh-fix1`**, based on upstream **`v2.0.5-base`**. [Maintenance history](MAINTENANCE.md) · [Pinned upstream version](zh-upstream.json)
 
-It runs on [LövePotion](https://github.com/lovebrew/lovepotion), TurtleP's implementation of the LÖVE API for homebrew consoles.
+## What this fork improves
 
-## Installation
+| Area | Changes in this fork |
+| --- | --- |
+| Official Chinese terminology | Corrected 93 catalog names from the original 2.0.3 Chinese translation. All 327 checked names now match the official Simplified Chinese localization from the maintainer's installed Steam copy. |
+| Effect descriptions | Restored omitted details such as free edition-tag cards, Double Tag's self-exclusion, and Ancient Joker's per-round suit change. Ectoplasm reports the hand-size penalty of its next use. |
+| Chinese fonts | Added a subset of Noto Sans SC Bold, renamed **Balatro3DS SC**, with normalized line metrics and baselines. Five native font sheets use 13/17/21/27/33 px cells; the current subset contains 967 characters. Roles using the same height share a font object. |
+| Upper-screen HUD | Keeps round-score labels, ante ratios, and other readouts within their panels. Boss abilities and target scores have separate space; discovery notifications use a compact footer. |
+| Blind selection | Lays out Chinese descriptions using their measured height, keeps punctuation with adjacent text, and fits scores, rewards, and skip controls on the bottom screen. |
+| Menus and shop | Fits menu labels to available width and improves deck-page footer readability. Adds a guard against leftover hand cards covering shop items or controls. |
+| Button prompts and gestures | Blind selection shows the current confirm/cancel bindings. The shop exit shows the cancel binding and a hold hint. A hold must begin in the shop to leave it; skipping a booster with B cannot also exit the shop. Dragging and sweep selection are protected. |
+| Localization structure | Keeps stable translation keys and internal card IDs, preserves existing structured color segments, and retains placeholders for dynamic values. Adds official-name, placeholder, font, and UI regression checks. |
 
-The easiest way to install is using FBI. Open the [releases page](https://github.com/idkhan/Balatro3DS/releases) and scan the QR code using FBI's "Remote Install" feature.
+These changes build on the upstream game's rendering, localization, structured tooltips, and input system. The gameplay fixes in 2.0.5—including deck-effect resets, Four Fingers scoring, booster-skip triggers, and Boss behavior—come from upstream and are merged into this branch.
 
-The CIA is unsigned, so installing it needs custom firmware with sigpatches. If you'd rather not install a title, the releases page also carries a `.3dsx`: drop it in the `3ds` folder at the root of your SD card and launch it from the Homebrew Launcher.
+## Interface previews
 
-## Controls
+Desktop dual-screen previews of this fork; these are **not photographs of a 3DS**.
 
-The bottom screen is the playfield and the only touch surface; the top screen is a readout. You can play entirely with buttons, entirely by touch, or mix the two.
+| Blind selection | Shop and button prompts |
+| --- | --- |
+| ![Chinese blind selection with visible scores, rewards, and button prompts](docs/images/zh-blinds.png) | ![Chinese shop with hold-to-exit and reroll button prompts](docs/images/zh-shop.png) |
 
-The face buttons follow the layout Balatro ships on the Switch, since the 3DS has the same ABXY arrangement:
+## Versions and validation
 
-- **A** — select. Hold and press the D-pad to reorder.
-- **B** — deselect, sell, or (with nothing selected) sort. Hold and press the D-pad to sweep.
-- **X** — discard, or reroll in the shop.
-- **Y** — play, or buy and use in the shop.
-- **L / R** — toggle the jokers and consumables panels.
+Source checkpoints are available as Git tags:
 
-All six are rebindable from Options, and on a New 3DS you can bind ZL and ZR as well.
+- [`v2.0.5-zh-fix1`](https://github.com/the1ndex/Balatro3DS/tree/v2.0.5-zh-fix1) — current upstream base: 2.0.5.
+- [`v2.0.4-zh-fix1`](https://github.com/the1ndex/Balatro3DS/tree/v2.0.4-zh-fix1).
+- [`v2.0.3-zh-fix2`](https://github.com/the1ndex/Balatro3DS/tree/v2.0.3-zh-fix2).
 
-## Performance notes
+The 2.0.5 maintenance build passed **242 regression checks**, the **327-name official Chinese comparison**, placeholder checks, and verification of all five native font sheets. Desktop checks cover 84 blind-selection layouts, 28 Boss HUDs, and eight dual-screen scenes. The CIA was extracted and all 648 files were checked; its native code, process settings, HOME Menu icon, and banner audio match the official upstream 2.0.5 package.
 
-**This port has been tested on both a New 3DS and Old 3DS**
+**This maintenance build has not yet been verified on a physical 3DS.** These checks cover the cases listed above; they do not establish that every translation, layout, or gameplay interaction is correct.
 
-A few things are deliberately turned down or off on an original 3DS, which has a much less powerful CPU. Some particle effects draw on a coarser grid.
+## Installation and saves
 
-## Modding
+This repository currently publishes the fork's **source branch and version tags**. Fork-specific prebuilt packages have not yet been attached to its GitHub Releases. The [upstream releases](https://github.com/idkhan/Balatro3DS/releases) provide upstream builds.
 
-The game loads mods written in the [Steamodded](https://github.com/Steamodded/smods) style: a folder with a `.json` manifest and a Lua file that calls `SMODS.Joker { ... }` and friends. Mods can add Jokers, Tarots, Planets, Spectrals, Vouchers, and sets of face-card art for **Options → Art**.
+For a CIA built from this branch, use **FBI** on a 3DS with custom firmware. The title ID is **`000400000BA1A700`**, matching upstream 2.x, so it updates the same installed title. Keep a save backup before changing versions. The save directory remains:
 
-To install a mod, copy its folder into the `mods` folder the game creates next to its save files on the SD card (`/3ds/save/Balatro3DS/sdmc/mods`), then restart. **Options → Mods** lists what loaded, and why anything didn't.
+```text
+SD:/3ds/save/Balatro3DS/sdmc/
+```
 
-A saved run remembers which mods it was played with. If those mods change, Continue shows what to install or remove; the run itself is kept.
+For a `.3dsx` built from this branch, place it in the SD card's `3ds` directory and launch it through the Homebrew Launcher. Mods use `/3ds/save/Balatro3DS/sdmc/mods`; see [MODDING.md](MODDING.md) for supported APIs and limitations.
 
-This isn't Steamodded itself. There's no Lovely, the PC game's internals aren't there, and the 3DS can't run shaders. Every card is its own `.t3x` image, and a Negative card needs its own art. [MODDING.md](MODDING.md) covers the full API, [`dev/example_mods/ExampleJokers`](dev/example_mods/ExampleJokers) is a working example, and `dev/make_negative.py` turns a card's image into its Negative version.
+Default shortcuts relevant to this fork:
 
-## Building it yourself
+| Screen | Action |
+| --- | --- |
+| Blind selection | **A** selects the available blind; **B** skips an eligible blind. |
+| Shop | **X** rerolls; hold **B** for at least 0.4 seconds to leave. |
+| Booster pack | **B** skips the pack; releasing it afterward keeps you in the shop. |
 
-`./dev/setup.sh` fetches devkitPro's 3DS packages, builds a patched LövePotion runtime, and pulls down the host tools it needs. `./dev/build.sh` then produces a CIA, or `./dev/build.sh 3dsx` a fused `.3dsx`; output lands in `dev/dist/`. [BUILD.md](BUILD.md) covers the older manual `.3dsx` recipe, which is aimed at end users rather than development.
+Prompts follow remapped bindings. The touch screen remains usable alongside buttons.
 
-Tests run headless under LuaJIT with `./tests/run.sh` — no console or LÖVE binary needed.
+## Building and maintaining
 
-## License
+For a full build, follow the upstream setup instructions:
 
-This project is provided as-is for educational and fan purposes. Check the repository license file for details before redistribution.
+```bash
+./dev/setup.sh
+./dev/build.sh        # CIA
+./dev/build.sh 3dsx   # 3DSX
+```
+
+Full-build output goes to `dev/dist/`. Chinese font generation requires Python and `fonttools`, in addition to the upstream build dependencies.
+
+The fork also includes maintenance checks:
+
+```bash
+python dev/test_zh.py
+python dev/audit_zh_translation.py --official-game /path/to/Balatro.exe
+python dev/verify_zh_font.py
+```
+
+These checks require `lupa` and `fonttools`. The translation audit reads the official localization from your own installed game; it does not download it. The release-repacking scripts in `dev/` use a pinned official CIA and the maintainer's local CTR tools; they are not a standalone build environment. See [MAINTENANCE.md](MAINTENANCE.md) for that workflow and [BUILD.md](BUILD.md) for the older manual 3DSX recipe.
+
+Updates are merged from stable upstream releases, then translations, fonts, inputs, affected layouts, and packages are checked. Previous version tags are retained for comparison and rollback. Background update monitoring and automatic publishing are not currently enabled.
+
+## Credits and licenses
+
+- [idkhan/Balatro3DS](https://github.com/idkhan/Balatro3DS) and its contributors: the original 3DS remake and ongoing gameplay work, including contributions from rosematcha.
+- Fussyzhy: the upstream Simplified Chinese localization on which these revisions build.
+- [LövePotion](https://github.com/lovebrew/lovepotion), TurtleP, and devkitPro: the homebrew runtime and toolchain.
+- LocalThunk and the original Balatro creators: the game, artwork, and audio. Please support the original game.
+
+This is an unofficial fan project and is not affiliated with LocalThunk. See [LICENSE](LICENSE) for the project's code license, and [OFL-zh_CN.txt](resources/fonts/OFL-zh_CN.txt) for the Chinese font's SIL Open Font License 1.1. Original game assets retain their original attribution.
